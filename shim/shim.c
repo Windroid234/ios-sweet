@@ -16,10 +16,10 @@
 #define RESTART_BOOTLOADER	0x77665500U
 #define PSHOLD			0x0c264000UL
 
-#define GICD_BASE		0x17a00000UL
-#define GICR_BASE		0x17a60000UL
-#define GICR_SIZE		0x100000UL
-#define GICR_PE_SIZE		0x20000UL
+#define GICD_BASE		0x17100000UL	/* SM8475 pong GIC-v3 distributor */
+#define GICR_BASE		0x17180000UL	/* SM8475 pong GIC-v3 redistributor */
+#define GICR_SIZE		0x200000UL
+#define GICR_PE_SIZE		0x40000UL	/* 0x40000 stride for SM8475 */
 #define GICR_TYPER		0x08
 #define GICR_WAKER		0x14
 #define GICR_SGI		0x10000
@@ -377,7 +377,7 @@ void shim_main(uint64_t dtb)
 	/* An xnu payload in the ramdisk means: boot it (MMU stays off). */
 	stage = "loader";
 	con_clear(RED);
-	con_str("SHIM", "sweet milestone 4: xnu loader");
+	con_str("SHIM", "pong milestone 4: xnu loader");
 	con_skip();
 	const char *why = loader_boot(dtb);
 	con_str("LOADER", why);
@@ -387,10 +387,8 @@ void shim_main(uint64_t dtb)
 	stage = "ufs";
 	test_ufs();
 	con_skip();
-	/* Keep the probe results on screen (later tests clear it); reset after 3 min. */
-	con_str("UFS", "probe done, reset in ~3 min");
-	delay_ms(180000);
-	reset(20);
+	con_str("UFS", "probe done, continuing to MMU/GIC...");
+	delay_ms(2000);
 
 	stage = "fill off";
 	uint64_t fill_off = ticks_fill(RED);
@@ -405,7 +403,7 @@ void shim_main(uint64_t dtb)
 	if (rc)
 		con_clear(RED);
 
-	con_str("SHIM", "sweet milestone 3");
+	con_str("SHIM", "pong milestone 3: MMU+PSCI+GIC");
 	con_skip();
 	con_hex2("DTB", "at=", dtb, "magic=", dtb ? __builtin_bswap32(rd32(dtb)) : 0);
 	con_hex2("IMAGE", "lo=", mi.img_lo, "hi=", mi.img_hi);

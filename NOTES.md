@@ -1,8 +1,33 @@
-# iOS 16 on sweet (Redmi Note 10 Pro, SM7150) - working notes
+# iOS 16 on Nothing Phone (2) (SM8475, pong) & sweet - working notes
 
-## Agent handoff / active work (2026-10-15, latest)
+## Agent handoff / active work (2026-10-28, latest)
 
-### >>> UPDATE 2026-10-18 (read first, then the 10-17 handoff below) <<<
+### >>> UPDATE 2026-10-28: Nothing Phone (2) (SM8475 / pong) Bring-up <<<
+
+**PROJECT PIVOT & STATE:**
+- Target device: Nothing Phone (2) (codename `pong`, model A065, platform `taro` / SM8475 Snapdragon 8+ Gen 1).
+- Device connected and rooted (Magisk); verified bootloader is UNLOCKED (`ro.boot.flash.locked = 0`, state `orange`).
+- Safety backups completed into `backup/`: `persist.img` (32MB), `modemst1.img`, `modemst2.img`, `fsg.img`, `fsc.img`, `boot_a.img` (96MB), `vendor_boot_a.img` (96MB), `dtbo_a.img` (24MB), `vbmeta_a.img` (64KB). Excluded by git.
+- Live FDT extracted to `dtb/pong_live.dtb` and decompiled to `dtb/pong_live.dts`.
+- Hardware MMIO discovered:
+  - GIC-v3: GICD `0x17100000`, GICR `0x17180000` (stride `0x40000` for 8 cores).
+  - Continuous Splash Framebuffer: `0xb8000000` (43 MB, `cont_splash_region`). 1080x2412.
+  - UFS Host: `0x01d84000` (standard UFSHCI 3.1).
+  - Upper DDR: `0x800000000` (9+ GB contiguous free DDR above `0x840000000`).
+  - USB: Synopsys DWC3 at `0x0a600000` (wired as USB 2.0 High-Speed on Nothing Phone 2).
+- Boot image format: Android Boot Image Header Version 4 (GKI).
+- Shim updated:
+  - `shim/console.h`: `FB_BASE 0xb8000000UL`, `FB_H 2412`.
+  - `shim/shim.c`: GICD `0x17100000UL`, GICR `0x17180000UL`, stride `0x40000UL`.
+  - `shim/mmu.c`: 64GB L2 mapping coverage (`NENT` blocks) to map high DDR.
+  - `shim/ufs.c`: inline `shim_strcmp`.
+  - `shim/build.sh`: toolchain fallback for `clang` + `ld.lld`, `-fno-jump-tables` (0 ABS64 relocations), `mkbootimg --header_version 4`.
+  - Output: `shim/out/shim-boot.img` successfully built.
+- ADT Generator:
+  - `tools/mkadt.py` updated to support `pong` hardware constants and emitted `shim/out/pong.adt`.
+- Next milestone: Run temporary diagnostic boot `fastboot boot shim/out/shim-boot.img` and observe reboot back to fastboot.
+
+### >>> UPDATE 2026-10-18 (sweet baseline below) <<<
 
 **STATE at end of 2026-10-18 (evening):**
 - On the phone: userdata = **image v15** (`/run/media/dipa/android/ios-sweet-ipsw/ios16-root-20H392-v15.img/.simg`; = v14 + `/private/var/preferences/SystemConfiguration/preferences.plist` with one network service "USB Ethernet": Interface DeviceName ue0 Type Ethernet, IPv4 Manual 192.168.7.2/24 router 192.168.7.1, DNS 1.1.1.1 8.8.8.8, set "Automatic" as CurrentSet). Fallback image v14 (v12/v13 deleted).
