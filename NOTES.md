@@ -2,30 +2,45 @@
 
 ## Agent handoff / active work (2026-10-28, latest)
 
-### >>> UPDATE 2026-10-28: Nothing Phone (2) (SM8475 / pong) Bring-up <<<
+### >>> UPDATE 2026-10-28 / 2026-10-29: Nothing Phone (2) (SM8475 / pong) Bring-up <<<
 
 **PROJECT PIVOT & STATE:**
 - Target device: Nothing Phone (2) (codename `pong`, model A065, platform `taro` / SM8475 Snapdragon 8+ Gen 1).
 - Device connected and rooted (Magisk); verified bootloader is UNLOCKED (`ro.boot.flash.locked = 0`, state `orange`).
 - Safety backups completed into `backup/`: `persist.img` (32MB), `modemst1.img`, `modemst2.img`, `fsg.img`, `fsc.img`, `boot_a.img` (96MB), `vendor_boot_a.img` (96MB), `dtbo_a.img` (24MB), `vbmeta_a.img` (64KB). Excluded by git.
-- Live FDT extracted to `dtb/pong_live.dtb` and decompiled to `dtb/pong_live.dts`.
-- Hardware MMIO discovered:
+- Full partition layout mapped (`/dev/block/by-name/`):
+  - `boot_a -> /dev/block/sde13`, `boot_b -> /dev/block/sde41` (96 MB each)
+  - `vendor_boot_a -> /dev/block/sde24`, `vendor_boot_b -> /dev/block/sde52` (96 MB each)
+  - `recovery_a -> /dev/block/sde27`, `recovery_b -> /dev/block/sde54` (OrangeFox installed)
+  - `userdata -> /dev/block/sda13` (UFS root partition)
+- Hardware MMIO:
   - GIC-v3: GICD `0x17100000`, GICR `0x17180000` (stride `0x40000` for 8 cores).
-  - Continuous Splash Framebuffer: `0xb8000000` (43 MB, `cont_splash_region`). 1080x2412.
+  - Continuous Splash Framebuffer: `0xb8000000` (43 MB, `cont_splash_region`). 1080x2412 @ 32bpp BGRA.
   - UFS Host: `0x01d84000` (standard UFSHCI 3.1).
   - Upper DDR: `0x800000000` (9+ GB contiguous free DDR above `0x840000000`).
-  - USB: Synopsys DWC3 at `0x0a600000` (wired as USB 2.0 High-Speed on Nothing Phone 2).
+  - USB: Synopsys DWC3 at `0x0a600000` behind Qualcomm dwc3-msm wrapper (`QSCRATCH` at `0x0a6f8800`).
+- iOS 16 Root Filesystem (`userdata`):
+  - Assembled 16 GB journaled case-sensitive HFS+ root from iPhone X (D22AP, 20H392) IPSW.
+  - Setup bypassed (`com.apple.purplebuddy.plist` SetupDone=1, SetupVersion=11).
+  - Mobileactivationd data ark seeded (`-ActivationState: Activated`).
+  - Flashed to `userdata` partition as sparse image `ios16-root.simg` (24 chunks, 100% OKAY).
 - Boot image format: Android Boot Image Header Version 4 (GKI).
-- Shim updated:
-  - `shim/console.h`: `FB_BASE 0xb8000000UL`, `FB_H 2412`.
-  - `shim/shim.c`: GICD `0x17100000UL`, GICR `0x17180000UL`, stride `0x40000UL`.
-  - `shim/mmu.c`: 64GB L2 mapping coverage (`NENT` blocks) to map high DDR.
-  - `shim/ufs.c`: inline `shim_strcmp`.
-  - `shim/build.sh`: toolchain fallback for `clang` + `ld.lld`, `-fno-jump-tables` (0 ABS64 relocations), `mkbootimg --header_version 4`.
-  - Output: `shim/out/shim-boot.img` successfully built.
-- ADT Generator:
-  - `tools/mkadt.py` updated to support `pong` hardware constants and emitted `shim/out/pong.adt`.
-- Next milestone: Run temporary diagnostic boot `fastboot boot shim/out/shim-boot.img` and observe reboot back to fastboot.
+- Shim & Kernel Diagnostics:
+  - CRITICAL SAFETY RULE: NEVER execute `fastboot boot` (hardbricks phone due to an ABL bug).
+  - CRITICAL PROTOCOL RULE: Standard `fastboot getvar` hangs ABL indefinitely. Direct PyUSB raw fastboot protocol (`tools/fb_cmd.py`) works cleanly with 0 errors.
+  - UFW host firewall: UDP 5140 and 192.168.7.0/24 subnet opened.
+  - USB Gagdet Root Cause: `sweet_usb_probe()` inspected GCC clock registers at SM7150 offsets (`GCC_USB30_PRIM_GDSCR = 0x0f004`), which failed on SM8475 (offset is `0x149004`), aborting before starting DWC3 gadget.
+  - Early Logging Root Cause: `sweet_usb_probe()` was only called at the end of `sweet_ufs_init()`, so if UFS setup had issues, USB never started.
+  - Patch 0082 created (`0082-sweet-pong-dwc3-usb.patch`): calls `sweet_usb_probe()` at the very start of `sweet_ufs_init()`, bypasses SM7150 GCC clock check, sets `clocks_on = true;`.
+  - CI Build in progress: GitHub Actions run `40779295276` on `myfork/main` (commit `c2ca67c`).
+- Framebuffer Tooling:
+  - `tools/rawfb_to_png.py`: converts raw `0xb8000000` memory (1080x2412 BGRA) to PNG.
+- Next Steps:
+  1. Download built `kernel.development.sweet` from run `40779295276`.
+  2. Assemble payload with `sweetusb=2 sweetfb_noconsole=0 cpus=1` (and `cpus=8`).
+  3. Build `shim/out/shim-boot.img` and flash `boot_a` via PyUSB.
+  4. Stream UDP console live over CDC-ECM (`192.168.7.1:5140`).
+  5. Verify iOS 16 boots and verify lock screen frame in continuous splash framebuffer memory at `0xb8000000`.
 
 ### >>> UPDATE 2026-10-18 (sweet baseline below) <<<
 
