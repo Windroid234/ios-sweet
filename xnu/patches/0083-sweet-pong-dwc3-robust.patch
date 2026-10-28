@@ -1,0 +1,46 @@
+--- a/bsd/dev/sweet_usb.c
++++ b/bsd/dev/sweet_usb.c
+@@ -273,7 +273,7 @@
+ 	dwc_wr(DEPCMDPAR1(ep), p1);
+ 	dwc_wr(DEPCMDPAR2(ep), p2);
+ 	dwc_wr(DEPCMD(ep), cmd | DEPCMD_CMDACT);
+-	for (int i = 0; i < 1000; i++) {
++	for (int i = 0; i < 50000; i++) {
+ 		uint32_t v = dwc_rd(DEPCMD(ep));
+ 		if (!(v & DEPCMD_CMDACT)) {
+ 			uint32_t status = (v >> 12) & 0xf;
+@@ -867,15 +867,19 @@
+ 	ud_if_create();
+ 
+ 	/* Device controller soft reset (PHY and global setup stay as ABL left them). */
++	/* Clear SUSPHY on GUSB2PHYCFG(0) and GUSB3PIPECTL(0) so PHY clocks run */
++	dwc_wr(0xc200, dwc_rd(0xc200) & ~(1u << 6));
++	dwc_wr(0xc2c0, dwc_rd(0xc2c0) & ~(1u << 17));
++
+ 	dwc_wr(DCTL, DCTL_CSFTRST);
+ 	int i;
+-	for (i = 0; i < 500 && (dwc_rd(DCTL) & DCTL_CSFTRST); i++) {
++	for (i = 0; i < 100 && (dwc_rd(DCTL) & DCTL_CSFTRST); i++) {
+ 		delay(1000);
+ 	}
+ 	printf("SWEET USB: soft reset %s after %d ms, GCTL 0x%08x DCFG 0x%08x\n",
+-	    (dwc_rd(DCTL) & DCTL_CSFTRST) ? "STUCK" : "done", i, dwc_rd(GCTL), dwc_rd(DCFG));
++	    (dwc_rd(DCTL) & DCTL_CSFTRST) ? "forced" : "done", i, dwc_rd(GCTL), dwc_rd(DCFG));
+ 	if (dwc_rd(DCTL) & DCTL_CSFTRST) {
+-		return;
++		dwc_wr(DCTL, dwc_rd(DCTL) & ~DCTL_CSFTRST);
+ 	}
+ 
+ 	dwc_wr(GEVNTADRLO, (uint32_t)(ud.dma_pa + UD_EVT));
+@@ -905,8 +909,10 @@
+ 	vm_offset_t qs = ml_io_map(QSCRATCH_PA, 0x100);
+ 	if (qs != 0) {
+ 		uint32_t hs = usb_rd(qs, QSCRATCH_HS_PHY_CTRL), ss = usb_rd(qs, QSCRATCH_SS_PHY_CTRL);
++		uint32_t gen = usb_rd(qs, 0x08);
+ 		printf("SWEET USB: QSCRATCH HS_PHY_CTRL 0x%08x SS_PHY_CTRL 0x%08x GENERAL_CFG 0x%08x\n",
+-		    hs, ss, usb_rd(qs, 0x08));
++		    hs, ss, gen);
++		*(volatile uint32_t *)(qs + 0x08) = gen & ~(1u << 8);
+ 		*(volatile uint32_t *)(qs + QSCRATCH_HS_PHY_CTRL) = hs | UTMI_OTG_VBUS_VALID | SW_SESSVLD_SEL;
+ 		*(volatile uint32_t *)(qs + QSCRATCH_SS_PHY_CTRL) = ss | LANE0_PWR_PRESENT;
+ 		__asm__ volatile ("dsb sy" ::: "memory");
