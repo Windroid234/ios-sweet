@@ -31,16 +31,32 @@
   - UFW host firewall: UDP 5140 and 192.168.7.0/24 subnet opened.
   - USB Gagdet Root Cause: `sweet_usb_probe()` inspected GCC clock registers at SM7150 offsets (`GCC_USB30_PRIM_GDSCR = 0x0f004`), which failed on SM8475 (offset is `0x149004`), aborting before starting DWC3 gadget.
   - Early Logging Root Cause: `sweet_usb_probe()` was only called at the end of `sweet_ufs_init()`, so if UFS setup had issues, USB never started.
-  - Patch 0082 created (`0082-sweet-pong-dwc3-usb.patch`): calls `sweet_usb_probe()` at the very start of `sweet_ufs_init()`, bypasses SM7150 GCC clock check, sets `clocks_on = true;`.
-  - CI Build in progress: GitHub Actions run `40779295276` on `myfork/main` (commit `c2ca67c`).
-- Framebuffer Tooling:
-  - `tools/rawfb_to_png.py`: converts raw `0xb8000000` memory (1080x2412 BGRA) to PNG.
+  - Patch 0082 created (`0082-sweet-pong-dwc3-usb.patch`): calls `sweet_usb_probe()` at the very start of `sweet_ufs_init()`, bypasses SM7150 GCC clock check, sets `clocks_on = true;`. CI run `40779295276` passed, built `xnu/out-pong-0082`.
+  - Boot 0082 Flashed & Running:
+    - Payload assembled with `cpus=1 wdt=-1 sweetfb_noconsole=0 sweetfb_hz=30 sweetusb=2` into `shim/out/payload-0082.bin`.
+    - Boot image `shim/out/shim-boot-0082.img` flashed to `boot_a` via PyUSB (`tools/pong_flash.py`, 16.09 MB streamed at 40.34 MB/s, OKAY).
+    - Phone rebooted at 01:31:25. Booted cleanly on `cpus=1` without panic or watchdog bite, continuously running iOS 16 userland.
+  - DWC3 / eUSB2 Diagnostics & Root Cause Analysis:
+    - On SM8475, `GUSB2PHYCFG(0)` (0xc200, bit 6) and `GUSB3PIPECTL(0)` (0xc2c0, bit 17) have `SUSPHY` enabled.
+    - Soft reset (`DCTL_CSFTRST`) timed out after 500ms due to gated PHY clocks, causing `sweet_usb_gadget_start()` to abort before configuring endpoints or setting `DCTL_RUN_STOP`.
+    - `ud_epcmd` timeout (1ms) was too tight for DWC3 endpoint commands.
+  - Patch 0083 Created (`0083-sweet-pong-dwc3-robust.patch`):
+    - Clears `SUSPHY` prior to soft reset, force-clears `DCTL_CSFTRST` on timeout instead of aborting.
+    - Increases `ud_epcmd` timeout to 50ms.
+    - Clears `PIPE_UTMI_CLK_DIS` in `QSCRATCH` register 0x08.
+    - Committed as `a21656a` on `myfork/main`.
+    - GitHub Actions build in progress: Run `40785620252` (`xnu.yml`).
+- Tooling:
+  - `tools/fb_cmd.py`: PyUSB raw fastboot CLI (bypasses ABL getvar freeze).
+  - `tools/pong_flash.py`: PyUSB raw partition flasher (16MB in 0.4s).
+  - `tools/rawfb_to_png.py`: Converts continuous splash memory (1080x2412 BGRA) to PNG.
+  - `tools/pong_monitor.py`: Automation daemon for Fastboot flashing and Recovery artifact capture.
 - Next Steps:
-  1. Download built `kernel.development.sweet` from run `40779295276`.
-  2. Assemble payload with `sweetusb=2 sweetfb_noconsole=0 cpus=1` (and `cpus=8`).
-  3. Build `shim/out/shim-boot.img` and flash `boot_a` via PyUSB.
-  4. Stream UDP console live over CDC-ECM (`192.168.7.1:5140`).
-  5. Verify iOS 16 boots and verify lock screen frame in continuous splash framebuffer memory at `0xb8000000`.
+  1. Complete CI run `40785620252` and download `kernel.development.sweet` into `xnu/out-pong-0083`.
+  2. Assemble `shim/out/shim-boot-0083.img`.
+  3. Wait for device reconnection (or wake from user) and flash 0083 to `boot_a`.
+  4. Boot into recovery (OrangeFox) to extract persistent console log via `tools/sweet-log-pull.sh` and continuous splash framebuffer via `tools/pong_monitor.py`.
+  5. Inspect `artifacts/lockscreen.png` and document full completion.
 
 ### >>> UPDATE 2026-10-18 (sweet baseline below) <<<
 
