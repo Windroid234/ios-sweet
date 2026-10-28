@@ -40,23 +40,29 @@
     - On SM8475, `GUSB2PHYCFG(0)` (0xc200, bit 6) and `GUSB3PIPECTL(0)` (0xc2c0, bit 17) have `SUSPHY` enabled.
     - Soft reset (`DCTL_CSFTRST`) timed out after 500ms due to gated PHY clocks, causing `sweet_usb_gadget_start()` to abort before configuring endpoints or setting `DCTL_RUN_STOP`.
     - `ud_epcmd` timeout (1ms) was too tight for DWC3 endpoint commands.
-  - Patch 0083 Created (`0083-sweet-pong-dwc3-robust.patch`):
+  - Patch 0083 Built & Staged (`0083-sweet-pong-dwc3-robust.patch`):
     - Clears `SUSPHY` prior to soft reset, force-clears `DCTL_CSFTRST` on timeout instead of aborting.
     - Increases `ud_epcmd` timeout to 50ms.
     - Clears `PIPE_UTMI_CLK_DIS` in `QSCRATCH` register 0x08.
     - Committed as `a21656a` on `myfork/main`.
-    - GitHub Actions build in progress: Run `40785620252` (`xnu.yml`).
-- Tooling:
+    - GitHub Actions CI run `40785620252` passed (9m31s).
+    - Downloaded and verified into `xnu/out-pong-0083/kernel.development.sweet`.
+    - Payload assembled into `shim/out/payload-0083.bin` (16,611,120 bytes).
+    - Android boot header v4 image created: `shim/out/shim-boot-0083.img` (16.87 MB).
+    - Integrity verified via `unpack_bootimg` (100% payload match).
+- Tooling & Automation:
   - `tools/fb_cmd.py`: PyUSB raw fastboot CLI (bypasses ABL getvar freeze).
   - `tools/pong_flash.py`: PyUSB raw partition flasher (16MB in 0.4s).
   - `tools/rawfb_to_png.py`: Converts continuous splash memory (1080x2412 BGRA) to PNG.
-  - `tools/pong_monitor.py`: Automation daemon for Fastboot flashing and Recovery artifact capture.
-- Next Steps:
-  1. Complete CI run `40785620252` and download `kernel.development.sweet` into `xnu/out-pong-0083`.
-  2. Assemble `shim/out/shim-boot-0083.img`.
-  3. Wait for device reconnection (or wake from user) and flash 0083 to `boot_a`.
-  4. Boot into recovery (OrangeFox) to extract persistent console log via `tools/sweet-log-pull.sh` and continuous splash framebuffer via `tools/pong_monitor.py`.
-  5. Inspect `artifacts/lockscreen.png` and document full completion.
+  - `tools/pong_monitor.py`: Active background daemon (task-1984) configured with `shim-boot-0083.img`. Auto-flashes on Fastboot connect, auto-dumps log and `0xb8000000` framebuffer on Recovery connect.
+- Status & Next Actions:
+  - Phone is running `boot_a` (kernel 0082, iOS 16 userland, SpringBoard active, framebuffer rendered at `0xb8000000`).
+  - `shim-boot-0083.img` is fully ready for flashing.
+  - `pong_monitor.py` is actively monitoring USB in the background for device reconnect.
+  - Upon device reconnect (or user wake-up pressing Power+VolDown into Fastboot/Recovery):
+    1. Fastboot: auto-flash `shim-boot-0083.img` to `boot_a` and reboot.
+    2. Recovery: pull `/dev/mem` continuous splash framebuffer at `0xb8000000` -> `artifacts/lockscreen.png`, pull persistent log ring from `userdata` -> `logs/`.
+    3. Document final milestone completion.
 
 ### >>> UPDATE 2026-10-18 (sweet baseline below) <<<
 
